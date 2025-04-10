@@ -1,0 +1,87 @@
+Scenario = uavScenario("UpdateRate",100,"ReferenceLocation",[0 0 0]);  
+addMesh(Scenario,"cylinder",{[0 0 1] [0 .01]},[0 1 0]); % Change where the green starting location is
+InitialPosition = [0 0 -10]; % Drone initial position
+InitialOrientation = [0 0 0]; % Drone initial orientation 
+platUAV = uavPlatform("UAV",Scenario, ...
+                      "ReferenceFrame","NED", ...
+                      "InitialPosition",InitialPosition, ...
+                      "InitialOrientation",eul2quat(InitialOrientation));
+updateMesh(platUAV,"quadrotor",{1.2},[1 0 0],eul2tform([0 0 pi])); % Edit helicopter icon (size, shape, color)
+
+
+AzimuthResolution = 1; % More detail vs higher performance lidar     
+ElevationResolution = 2; % More detail vs higher performance lidar  vertically
+MaxRange = 4; % Increase to detect objects farther away.
+AzimuthLimits = [-179 179]; % Defines field of view (horizontal), Change to [0 180] to simulate a front-facing LiDAR.
+ElevationLimits = [-15 15] % Defines vertical scanning range.Widen or narrow it to simulate camera-style or wide-angle sensors.
+LidarModel = uavLidarPointCloudGenerator("UpdateRate",10, ...
+                                         "MaxRange",MaxRange, ...
+                                         "RangeAccuracy",3, ...
+                                         "AzimuthResolution",AzimuthResolution, ...
+                                         "ElevationResolution",ElevationResolution, ...
+                                         "AzimuthLimits",AzimuthLimits, ...
+                                         "ElevationLimits",ElevationLimits, ...                                       
+                                         "HasOrganizedOutput",true);
+
+
+uavSensor("Lidar",platUAV,LidarModel, ...
+          "MountingLocation",[0 0 -0.4], ... % Position of the LiDAR relative to the drone body. Raise it with [0 0 0.2] or move it to the front with [0.5 0 0].
+          "MountingAngles",[0 0 180]); % Rotates the LiDAR on the drone. E.g., [0 0 90] turns it 90° yaw to face right.
+show3D(Scenario);
+
+
+ObstaclePositions = [5 0;7 17;15 3;2 10;20 10; 15 20]; % Locations of the obstacles
+ObstacleHeight = 25;                      % Height of the obstacles
+ObstaclesWidth = 4;                       % Width of the obstacles
+for i = 1:size(ObstaclePositions,1)
+    addMesh(Scenario,"polygon", ...
+        {[ObstaclePositions(i,1)-ObstaclesWidth/2 ObstaclePositions(i,2)-ObstaclesWidth/2; ... % Bottom-left
+        ObstaclePositions(i,1)+ObstaclesWidth/2 ObstaclePositions(i,2)-ObstaclesWidth/2; ... % Bottom-right
+        ObstaclePositions(i,1)+ObstaclesWidth/2 ObstaclePositions(i,2)+ObstaclesWidth/2; ...  % Top-right
+        ObstaclePositions(i,1)-ObstaclesWidth/2 ObstaclePositions(i,2)+ObstaclesWidth/2], ... % Top-left
+        [0 ObstacleHeight]},0.651*ones(1,3));
+end
+show3D(Scenario);
+legend("Start Position","Obstacles")
+
+
+Waypoints = [InitialPosition; 0 20 -7 ;20 20 -7; 20 0 -7;10 12 -7];
+for i = 2:size(Waypoints,1)
+    addMesh(Scenario,"cylinder",{[Waypoints(i,2) Waypoints(i,1) 1] [0 0.1]},[1 0 0]);
+end
+show3D(Scenario);
+hold on
+plot3([InitialPosition(1,2); Waypoints(:,2)],[InitialPosition(1,2); Waypoints(:,1)],[-InitialPosition(1,3); -Waypoints(:,3)],"-g")
+legend(["Start Position","Obstacles","","","Waypoints","","","Direct Path"])
+
+
+% Proportional Gains: how aggressively the controller responds to the error
+Px = 6;
+Py = 6;
+Pz = 6.5;
+
+% Derivative Gains: Damps the response and helps reduce overshoot and oscillations
+Dx = 1.5;
+Dy = 1.5;
+Dz = 2.5;
+
+% Integral Gains: Eliminates steady-state error (accumulates past errors).
+Ix = 0;
+Iy = 0;
+Iz = 0;
+
+% Filter Coefficients:  reduce noise sensitivity
+Nx = 10;
+Ny = 10;
+Nz = 14.4947065605712; 
+
+UAVSampleTime = 0.001;
+Gravity = 9.81;
+DroneMass = 0.1;
+
+out = sim("ObstacleAvoidanceDemo.slx");
+
+hold on
+points = squeeze(out.trajectoryPoints(1,:,:))';
+plot3(points(:,2),points(:,1),-points(:,3),"-r");
+legend(["Start Position","Obstacles","","","Waypoints","","","Direct Path","UAV Trajectory"])
